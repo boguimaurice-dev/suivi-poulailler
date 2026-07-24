@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carnet du Poulailler — Suivi de Rentabilité</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg: #F3EEE1;
+    --card: #FBF8F0;
+    --ink: #26251C;
+    --ink-soft: #5B5847;
+    --green: #3B4A32;
+    --green-deep: #2A3524;
+    --rust: #A63D2C;
+    --rust-soft: #C97A64;
+    --gold: #C79235;
+    --gold-soft: #E9CE8F;
+    --line: #DCD2B8;
+    --good: #4C6B3F;
+    --warn: #A63D2C;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{ font-family:'IBM Plex Mono', monospace; }
+  .display{ font-family:'Fraunces', serif; }
+
+  #app{ max-width:1100px; margin:0 auto; padding:28px 20px 80px; }
+
+  /* Header */
+  header.top{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    border-bottom:2px solid var(--green);
+    padding-bottom:16px; margin-bottom:28px;
+    flex-wrap:wrap; gap:12px;
+  }
+  header.top .brand{ display:flex; align-items:center; gap:14px; }
+  .hen-mark{ width:40px; height:40px; flex-shrink:0; }
+  header.top h1{
+    font-family:'Fraunces', serif; font-weight:600; font-size:28px;
+    margin:0; color:var(--green-deep); letter-spacing:0.2px;
+  }
+  header.top .sub{ font-size:12.5px; color:var(--ink-soft); margin-top:2px; letter-spacing:0.3px;}
+  .btn{
+    font-family:'Inter',sans-serif; font-weight:600; font-size:13.5px;
+    border:1.5px solid var(--green); background:var(--green); color:#F3EEE1;
+    padding:10px 16px; border-radius:3px; cursor:pointer;
+    transition:transform .12s ease, box-shadow .12s ease;
+  }
+  .btn:hover{ transform:translateY(-1px); box-shadow:0 3px 0 var(--green-deep); }
+  .btn:active{ transform:translateY(0); box-shadow:none; }
+  .btn.ghost{ background:transparent; color:var(--green); }
+  .btn.rust{ border-color:var(--rust); background:var(--rust); }
+  .btn.rust:hover{ box-shadow:0 3px 0 #7a2c20; }
+  .btn.small{ padding:6px 11px; font-size:12px; }
+  .btn:disabled{ opacity:.4; cursor:not-allowed; }
+
+  /* Dashboard cards */
+  .lot-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(255px,1fr)); gap:16px; }
+  .lot-card{
+    background:var(--card); border:1px solid var(--line); border-radius:4px;
+    padding:18px 18px 16px; cursor:pointer; position:relative;
+    border-left:4px solid var(--gold);
+    transition:box-shadow .15s ease, transform .15s ease;
+  }
+  .lot-card.ponte{ border-left-color:var(--green); }
+  .lot-card:hover{ box-shadow:0 4px 14px rgba(43,42,30,0.08); transform:translateY(-2px); }
+  .lot-card .kind{
+    font-size:10.5px; text-transform:uppercase; letter-spacing:1.2px;
+    color:var(--ink-soft); font-weight:600;
+  }
+  .lot-card h3{ font-family:'Fraunces',serif; font-size:19px; margin:4px 0 10px; color:var(--green-deep);}
+  .lot-card .rowline{ display:flex; justify-content:space-between; font-size:13px; padding:3px 0; }
+  .lot-card .rowline .lab{ color:var(--ink-soft); }
+  .lot-card .rowline .val{ font-family:'IBM Plex Mono',monospace; font-weight:500; }
+  .lot-card .marge-pos{ color:var(--good); }
+  .lot-card .marge-neg{ color:var(--warn); }
+  .badge-alert{
+    position:absolute; top:14px; right:14px; background:var(--rust); color:#fff;
+    font-size:10px; padding:3px 7px; border-radius:20px; font-weight:700; letter-spacing:.4px;
+  }
+  .empty{
+    border:1.5px dashed var(--line); border-radius:6px; padding:50px 20px; text-align:center; color:var(--ink-soft);
+  }
+  .empty .display{ font-size:20px; color:var(--green-deep); margin-bottom:8px;}
+
+  /* Detail view */
+  .backlink{ font-size:13px; color:var(--ink-soft); cursor:pointer; display:inline-flex; align-items:center; gap:6px; margin-bottom:14px; }
+  .backlink:hover{ color:var(--green-deep); }
+  .lot-header{ display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px; margin-bottom:8px; }
+  .lot-header h2{ font-family:'Fraunces',serif; font-size:27px; margin:0; color:var(--green-deep); }
+  .lot-meta{ font-size:12.5px; color:var(--ink-soft); margin-top:4px; }
+
+  .kpi-strip{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:20px 0 26px; }
+  .kpi{ background:var(--card); border:1px solid var(--line); border-radius:4px; padding:12px 14px; }
+  .kpi .lab{ font-size:10.5px; text-transform:uppercase; letter-spacing:1px; color:var(--ink-soft); }
+  .kpi .val{ font-family:'IBM Plex Mono',monospace; font-size:19px; font-weight:600; margin-top:4px; color:var(--green-deep);}
+  .kpi .val.alert{ color:var(--warn); }
+
+  .alert-box{
+    background:#FBEAE6; border:1px solid var(--rust-soft); color:#7A2C20;
+    padding:11px 14px; border-radius:4px; font-size:13px; margin-bottom:18px;
+    display:flex; gap:8px; align-items:flex-start;
+  }
+
+  .tabs{ display:flex; gap:4px; border-bottom:1.5px solid var(--line); margin-bottom:18px; flex-wrap:wrap;}
+  .tab{
+    padding:9px 14px; font-size:13px; font-weight:600; color:var(--ink-soft); cursor:pointer;
+    border-bottom:2.5px solid transparent; margin-bottom:-1.5px;
+  }
+  .tab.active{ color:var(--green-deep); border-bottom-color:var(--rust); }
+
+  table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  thead th{
+    text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:0.8px;
+    color:var(--ink-soft); border-bottom:1.5px solid var(--green); padding:6px 8px;
+  }
+  tbody td{ padding:8px 8px; border-bottom:1px dotted var(--line); font-family:'IBM Plex Mono',monospace; }
+  tbody td.txt{ font-family:'Inter',sans-serif; }
+  tbody tr:hover{ background:rgba(199,146,53,0.07); }
+  td.actions-cell{ white-space:nowrap; text-align:right; }
+  .row-action{
+    font-family:'Inter',sans-serif; font-size:11.5px; font-weight:600; cursor:pointer;
+    color:var(--ink-soft); padding:3px 6px; border-radius:3px; border:none; background:none;
+  }
+  .row-action:hover{ color:var(--green-deep); text-decoration:underline; }
+  .row-action.del:hover{ color:var(--rust); }
+  .num-neg{ color:var(--warn); }
+  .num-pos{ color:var(--good); }
+  .table-actions{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .section-title{ font-family:'Fraunces',serif; font-size:15px; color:var(--green-deep); margin:0;}
+
+  /* Modal */
+  .overlay{
+    position:fixed; inset:0; background:rgba(38,37,28,0.45); display:flex;
+    align-items:center; justify-content:center; z-index:50; padding:20px;
+  }
+  .modal{
+    background:var(--card); border-radius:6px; padding:26px; width:100%; max-width:440px;
+    max-height:86vh; overflow-y:auto; border:1px solid var(--line);
+  }
+  .modal h3{ font-family:'Fraunces',serif; margin:0 0 4px; font-size:20px; color:var(--green-deep);}
+  .modal .modal-sub{ font-size:12.5px; color:var(--ink-soft); margin-bottom:18px; }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:5px; }
+  .field input, .field select{
+    width:100%; padding:9px 10px; border:1.3px solid var(--line); border-radius:3px;
+    font-family:'Inter',sans-serif; font-size:14px; background:#fff; color:var(--ink);
+  }
+  .field input:focus, .field select:focus{ outline:none; border-color:var(--green); }
+  .field-row{ display:flex; gap:10px; }
+  .field-row .field{ flex:1; }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
+  .form-error{
+    color:var(--rust); font-size:12.5px; background:#FBEAE6; border:1px solid var(--rust-soft);
+    padding:8px 10px; border-radius:3px; margin-bottom:14px;
+  }
+  .radio-group{ display:flex; gap:8px; }
+  .radio-opt{
+    flex:1; border:1.3px solid var(--line); border-radius:3px; padding:9px; text-align:center;
+    font-size:13px; font-weight:600; cursor:pointer; color:var(--ink-soft);
+  }
+  .radio-opt.sel{ border-color:var(--green); background:rgba(59,74,50,0.08); color:var(--green-deep); }
+
+  .footer-note{ text-align:center; font-size:11.5px; color:var(--ink-soft); margin-top:50px; letter-spacing:.2px;}
+  .loading{ text-align:center; padding:60px; color:var(--ink-soft); font-size:14px;}
+  ::selection{ background:var(--gold-soft); }
+</style>
+</head>
+<body>
+<div id="app"><div class="loading">Ouverture du carnet…</div></div>
+
+<script>
+// ---------- STATE ----------
+let STATE = { lots: [], view: 'dashboard', activeLotId: null, activeTab: 'resume', modal: null, loaded:false, syncing:false };
+
+const SUPABASE_URL = 'https://rtcnggurwwvanplkbygm.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_4iiv-_l0ecuzxCJozKMNDw_W6wuRpve';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function fmtFCFA(n){
+  n = Math.round(n||0);
+  return n.toLocaleString('fr-FR').replace(/\u202f/g,' ') + ' FCFA';
+}
+function fmtNum(n, d=1){ return (n||0).toLocaleString('fr-FR', {maximumFractionDigits:d}); }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+
+// ---------- MAPPING (colonnes DB <-> objets JS) ----------
+function dbLotToApp(row){
+  return { id: row.id, name: row.name, type: row.type, effectifInitial: row.effectif_initial,
+           dateDebut: row.date_debut, race: row.race, entries: [], costs: [], ventes: [] };
+}
+function dbEntryToApp(row){
+  return { id: row.id, date: row.date, mortalite: row.mortalite, alimentKg: Number(row.aliment_kg),
+           alimentCout: Number(row.aliment_cout), poidsMoyen: row.poids_moyen!==null?Number(row.poids_moyen):undefined,
+           oeufs: row.oeufs!==null?Number(row.oeufs):undefined };
+}
+function dbCostToApp(row){
+  return { id: row.id, date: row.date, categorie: row.categorie, libelle: row.libelle, montant: Number(row.montant) };
+}
+function dbSaleToApp(row){
+  return { id: row.id, date: row.date, quantite: Number(row.quantite), unite: row.unite,
+           prixUnitaire: Number(row.prix_unitaire), montant: Number(row.montant) };
+}
+
+// ---------- PERSISTENCE (Supabase, partagé entre tous les membres de l'équipe) ----------
+function setSyncIndicator(text){
+  const el = document.getElementById('sync-indicator');
+  if(el) el.textContent = text;
+}
+
+async function fetchAllData(silent){
+  if(!silent){ STATE.syncing = true; }
+  try{
+    const [lotsRes, entriesRes, costsRes, ventesRes] = await Promise.all([
+      sb.from('lots').select('*').order('created_at', {ascending:false}),
+      sb.from('entries').select('*'),
+      sb.from('costs').select('*'),
+      sb.from('ventes').select('*')
+    ]);
+    if(lotsRes.error) throw lotsRes.error;
+    const lots = lotsRes.data.map(dbLotToApp);
+    const byId = {};
+    lots.forEach(l=>byId[l.id]=l);
+    (entriesRes.data||[]).forEach(r=>{ const l=byId[r.lot_id]; if(l) l.entries.push(dbEntryToApp(r)); });
+    (costsRes.data||[]).forEach(r=>{ const l=byId[r.lot_id]; if(l) l.costs.push(dbCostToApp(r)); });
+    (ventesRes.data||[]).forEach(r=>{ const l=byId[r.lot_id]; if(l) l.ventes.push(dbSaleToApp(r)); });
+    STATE.lots = lots;
+    STATE.loaded = true;
+    setSyncIndicator('');
+  }catch(e){
+    console.error('Erreur de synchronisation', e);
+    setSyncIndicator('⚠ Connexion impossible');
+  }
+  STATE.syncing = false;
+  render();
+}
+
+// Actualisation automatique en arrière-plan (sans perturber une fenêtre ouverte)
+setInterval(()=>{ if(!STATE.modal) fetchAllData(true); }, 12000);
+
+
+// ---------- COMPUTATION ----------
+function computeLot(lot){
+  const mortaliteTotal = lot.entries.reduce((s,e)=>s+(Number(e.mortalite)||0),0);
+  const effectifActuel = lot.effectifInitial - mortaliteTotal;
+  const tauxMortalite = lot.effectifInitial>0 ? (mortaliteTotal/lot.effectifInitial)*100 : 0;
+
+  const alimentKgTotal = lot.entries.reduce((s,e)=>s+(Number(e.alimentKg)||0),0);
+  const alimentCoutTotal = lot.entries.reduce((s,e)=>s+(Number(e.alimentCout)||0),0);
+
+  const autresCouts = lot.costs.reduce((s,c)=>s+(Number(c.montant)||0),0);
+  const coutsTotal = autresCouts + alimentCoutTotal;
+
+  const ventesTotal = lot.ventes.reduce((s,v)=>s+(Number(v.montant)||0),0);
+  const marge = ventesTotal - coutsTotal;
+
+  let production = 0; // kg produits (chair) ou nb oeufs (ponte)
+  let coutUnitaireLabel = '';
+  let coutUnitaire = 0;
+  let ic = null;
+
+  if(lot.type === 'chair'){
+    const dernierPoids = [...lot.entries].reverse().find(e=>e.poidsMoyen)?.poidsMoyen;
+    production = dernierPoids ? dernierPoids * effectifActuel : 0;
+    coutUnitaireLabel = 'Coût / kg vif';
+    coutUnitaire = production>0 ? coutsTotal/production : 0;
+    ic = production>0 ? alimentKgTotal/production : null;
+  } else {
+    production = lot.entries.reduce((s,e)=>s+(Number(e.oeufs)||0),0);
+    coutUnitaireLabel = 'Coût / œuf';
+    coutUnitaire = production>0 ? coutsTotal/production : 0;
+  }
+
+  // Alerts
+  const alerts = [];
+  if(tauxMortalite > 5) alerts.push(`Mortalité cumulée élevée : ${fmtNum(tauxMortalite,1)}% (seuil recommandé 5%)`);
+  // spike detection on last entry mortality vs effectif at that time
+  if(lot.entries.length>=1){
+    const last = lot.entries[lot.entries.length-1];
+    const effAvantDernier = lot.effectifInitial - lot.entries.slice(0,-1).reduce((s,e)=>s+(Number(e.mortalite)||0),0);
+    if(effAvantDernier>0 && (Number(last.mortalite)||0)/effAvantDernier > 0.02){
+      alerts.push(`Pic de mortalité au dernier relevé (${last.date}) : ${last.mortalite} sujets en une fois`);
+    }
+  }
+  if(lot.type==='chair' && ic!==null && ic > 2.2){
+    alerts.push(`Indice de consommation élevé (${fmtNum(ic,2)}) — vérifier le gaspillage d'aliment`);
+  }
+
+  return { mortaliteTotal, effectifActuel, tauxMortalite, alimentKgTotal, alimentCoutTotal,
+           autresCouts, coutsTotal, ventesTotal, marge, production, coutUnitaireLabel, coutUnitaire, ic, alerts };
+}
+
+// ---------- RENDER ----------
+function render(){
+  const app = document.getElementById('app');
+  if(!STATE.loaded){ app.innerHTML = '<div class="loading">Ouverture du carnet…</div>'; return; }
+
+  let html = renderHeader();
+  if(STATE.view === 'dashboard'){
+    html += renderDashboard();
+  } else if(STATE.view === 'lot'){
+    html += renderLotDetail(STATE.activeLotId);
+  }
+  html += `<div class="footer-note">Carnet du Poulailler · données partagées avec toute l'équipe · synchronisées en direct</div>`;
+  if(STATE.modal){ html += renderModal(); }
+  app.innerHTML = html;
+  attachHandlers();
+}
+
+function henMark(){
+  return `<svg class="hen-mark" viewBox="0 0 40 40" fill="none">
+    <circle cx="20" cy="20" r="19" fill="#3B4A32"/>
+    <path d="M13 22c0-5 3-9 7-9s7 4 7 9-3 6-7 6-7-1-7-6z" fill="#F3EEE1"/>
+    <path d="M20 13c1-3 4-4 6-3-1 2-2 3-4 4" fill="#C79235"/>
+    <circle cx="17" cy="20" r="1.3" fill="#26251C"/>
+    <path d="M25 24l3 1-3 1" fill="#A63D2C"/>
+  </svg>`;
+}
+
+function renderHeader(){
+  return `
+  <header class="top">
+    <div class="brand">
+      ${henMark()}
+      <div>
+        <h1>Carnet du Poulailler</h1>
+        <div class="sub">Suivi de rentabilité par lot — chair &amp; ponte</div>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <span id="sync-indicator" style="font-size:11.5px; color:var(--ink-soft);"></span>
+      <button class="btn ghost small" data-action="refresh-data">↻ Actualiser</button>
+      ${STATE.view==='dashboard' ? `<button class="btn" data-action="open-new-lot">+ Nouveau lot</button>` : ''}
+    </div>
+  </header>`;
+}
+
+function renderDashboard(){
+  if(STATE.lots.length === 0){
+    return `<div class="empty">
+      <div class="display">Aucun lot enregistré</div>
+      <p>Créez votre premier lot de poulets de chair ou de pondeuses pour commencer le suivi.</p>
+      <button class="btn" data-action="open-new-lot" style="margin-top:8px;">+ Nouveau lot</button>
+    </div>`;
+  }
+  const cards = STATE.lots.map(lot=>{
+    const k = computeLot(lot);
+    const margeClass = k.marge>=0 ? 'marge-pos' : 'marge-neg';
+    return `<div class="lot-card ${lot.type==='ponte'?'ponte':''}" data-action="open-lot" data-id="${lot.id}">
+      ${k.alerts.length ? `<span class="badge-alert">${k.alerts.length} alerte${k.alerts.length>1?'s':''}</span>` : ''}
+      <div class="kind">${lot.type==='chair' ? 'Poulets de chair' : 'Pondeuses'}</div>
+      <h3>${escapeHtml(lot.name)}</h3>
+      <div class="rowline"><span class="lab">Effectif actuel</span><span class="val">${fmtNum(k.effectifActuel,0)} / ${fmtNum(lot.effectifInitial,0)}</span></div>
+      <div class="rowline"><span class="lab">Mortalité</span><span class="val">${fmtNum(k.tauxMortalite,1)}%</span></div>
+      <div class="rowline"><span class="lab">Coûts cumulés</span><span class="val">${fmtFCFA(k.coutsTotal)}</span></div>
+      <div class="rowline"><span class="lab">Marge</span><span class="val ${margeClass}">${k.marge>=0?'+':''}${fmtFCFA(k.marge)}</span></div>
+    </div>`;
+  }).join('');
+  return `<div class="lot-grid">${cards}</div>`;
+}
+
+function renderLotDetail(lotId){
+  const lot = STATE.lots.find(l=>l.id===lotId);
+  if(!lot) return `<p>Lot introuvable.</p>`;
+  const k = computeLot(lot);
+
+  const alertsHtml = k.alerts.map(a=>`<div class="alert-box">⚠ ${a}</div>`).join('');
+
+  const kpis = `
+  <div class="kpi-strip">
+    <div class="kpi"><div class="lab">Effectif actuel</div><div class="val">${fmtNum(k.effectifActuel,0)}</div></div>
+    <div class="kpi"><div class="lab">Taux mortalité</div><div class="val ${k.tauxMortalite>5?'alert':''}">${fmtNum(k.tauxMortalite,1)}%</div></div>
+    <div class="kpi"><div class="lab">Aliment consommé</div><div class="val">${fmtNum(k.alimentKgTotal,0)} kg</div></div>
+    ${lot.type==='chair' ? `<div class="kpi"><div class="lab">Indice consommation</div><div class="val ${k.ic&&k.ic>2.2?'alert':''}">${k.ic!==null?fmtNum(k.ic,2):'—'}</div></div>` : `<div class="kpi"><div class="lab">Œufs pondus</div><div class="val">${fmtNum(k.production,0)}</div></div>`}
+    <div class="kpi"><div class="lab">Coûts totaux</div><div class="val">${fmtFCFA(k.coutsTotal)}</div></div>
+    <div class="kpi"><div class="lab">Revenus</div><div class="val">${fmtFCFA(k.ventesTotal)}</div></div>
+    <div class="kpi"><div class="lab">Marge</div><div class="val ${k.marge<0?'alert':''}">${k.marge>=0?'+':''}${fmtFCFA(k.marge)}</div></div>
+    <div class="kpi"><div class="lab">${k.coutUnitaireLabel}</div><div class="val">${k.coutUnitaire>0?fmtFCFA(k.coutUnitaire):'—'}</div></div>
+  </div>`;
+
+  const tabs = `
+  <div class="tabs">
+    <div class="tab ${STATE.activeTab==='resume'?'active':''}" data-action="tab" data-tab="resume">Résumé</div>
+    <div class="tab ${STATE.activeTab==='suivi'?'active':''}" data-action="tab" data-tab="suivi">Suivi journalier</div>
+    <div class="tab ${STATE.activeTab==='couts'?'active':''}" data-action="tab" data-tab="couts">Coûts</div>
+    <div class="tab ${STATE.activeTab==='ventes'?'active':''}" data-action="tab" data-tab="ventes">Ventes</div>
+  </div>`;
+
+  let body = '';
+  if(STATE.activeTab==='resume'){
+    body = `
+    <p style="font-size:13.5px;color:var(--ink-soft);max-width:640px;line-height:1.6;">
+      Lot <strong>${escapeHtml(lot.name)}</strong> (${lot.race?escapeHtml(lot.race)+' — ':''}${lot.type==='chair'?'poulets de chair':'pondeuses'}),
+      démarré le ${fmtDate(lot.dateDebut)} avec ${fmtNum(lot.effectifInitial,0)} sujets.
+      ${k.marge>=0
+        ? `Ce lot est actuellement <strong style="color:var(--good)">bénéficiaire</strong>.`
+        : `Ce lot affiche pour l'instant un <strong style="color:var(--warn)">déficit</strong> — les ventes à venir peuvent encore combler l'écart.`}
+    </p>`;
+  } else if(STATE.activeTab==='suivi'){
+    body = renderEntriesTab(lot);
+  } else if(STATE.activeTab==='couts'){
+    body = renderCostsTab(lot);
+  } else if(STATE.activeTab==='ventes'){
+    body = renderSalesTab(lot);
+  }
+
+  return `
+  <div class="backlink" data-action="back">← Retour aux lots</div>
+  <div class="lot-header">
+    <div>
+      <h2>${escapeHtml(lot.name)}</h2>
+      <div class="lot-meta">${lot.type==='chair'?'Poulets de chair':'Pondeuses'} · démarré le ${fmtDate(lot.dateDebut)} · ${escapeHtml(lot.race||'race non précisée')}</div>
+    </div>
+    <button class="btn ghost small" data-action="delete-lot" data-id="${lot.id}">Supprimer ce lot</button>
+  </div>
+  ${alertsHtml}
+  ${kpis}
+  ${tabs}
+  ${body}
+  `;
+}
+
+function renderEntriesTab(lot){
+  const rows = [...lot.entries].sort((a,b)=>a.date.localeCompare(b.date)).map(e=>`
+    <tr>
+      <td class="txt">${fmtDate(e.date)}</td>
+      <td class="${Number(e.mortalite)>0?'num-neg':''}">${e.mortalite||0}</td>
+      <td>${fmtNum(e.alimentKg,1)} kg</td>
+      <td>${fmtFCFA(e.alimentCout)}</td>
+      <td>${lot.type==='chair' ? (e.poidsMoyen?fmtNum(e.poidsMoyen,2)+' kg':'—') : (e.oeufs||0)}</td>
+      <td class="actions-cell">
+        <button class="row-action" data-action="edit-entry" data-id="${lot.id}" data-entry="${e.id}">Modifier</button>
+        <button class="row-action del" data-action="delete-entry" data-id="${lot.id}" data-entry="${e.id}">Supprimer</button>
+      </td>
+    </tr>`).join('');
+  return `
+  <div class="table-actions">
+    <h4 class="section-title">Relevés journaliers / hebdomadaires</h4>
+    <button class="btn small" data-action="open-new-entry" data-id="${lot.id}">+ Ajouter un relevé</button>
+  </div>
+  <table>
+    <thead><tr><th>Date</th><th>Mortalité</th><th>Aliment</th><th>Coût aliment</th><th>${lot.type==='chair'?'Poids moyen':'Œufs pondus'}</th><th></th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="6" class="txt" style="color:var(--ink-soft)">Aucun relevé pour l'instant.</td></tr>`}</tbody>
+  </table>`;
+}
+
+function renderCostsTab(lot){
+  const rows = [...lot.costs].sort((a,b)=>a.date.localeCompare(b.date)).map(c=>`
+    <tr>
+      <td class="txt">${fmtDate(c.date)}</td>
+      <td class="txt">${escapeHtml(catLabel(c.categorie))}</td>
+      <td class="txt">${escapeHtml(c.libelle||'—')}</td>
+      <td>${fmtFCFA(c.montant)}</td>
+      <td class="actions-cell">
+        <button class="row-action" data-action="edit-cost" data-id="${lot.id}" data-cost="${c.id}">Modifier</button>
+        <button class="row-action del" data-action="delete-cost" data-id="${lot.id}" data-cost="${c.id}">Supprimer</button>
+      </td>
+    </tr>`).join('');
+  return `
+  <div class="table-actions">
+    <h4 class="section-title">Coûts (hors aliment, saisi dans le suivi)</h4>
+    <button class="btn small" data-action="open-new-cost" data-id="${lot.id}">+ Ajouter un coût</button>
+  </div>
+  <table>
+    <thead><tr><th>Date</th><th>Catégorie</th><th>Détail</th><th>Montant</th><th></th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="5" class="txt" style="color:var(--ink-soft)">Aucun coût enregistré.</td></tr>`}</tbody>
+  </table>`;
+}
+
+function renderSalesTab(lot){
+  const rows = [...lot.ventes].sort((a,b)=>a.date.localeCompare(b.date)).map(v=>`
+    <tr>
+      <td class="txt">${fmtDate(v.date)}</td>
+      <td>${fmtNum(v.quantite,0)} ${escapeHtml(v.unite)}</td>
+      <td>${fmtFCFA(v.prixUnitaire)}</td>
+      <td class="num-pos">${fmtFCFA(v.montant)}</td>
+      <td class="actions-cell">
+        <button class="row-action" data-action="edit-sale" data-id="${lot.id}" data-sale="${v.id}">Modifier</button>
+        <button class="row-action del" data-action="delete-sale" data-id="${lot.id}" data-sale="${v.id}">Supprimer</button>
+      </td>
+    </tr>`).join('');
+  return `
+  <div class="table-actions">
+    <h4 class="section-title">Ventes</h4>
+    <button class="btn small" data-action="open-new-sale" data-id="${lot.id}">+ Ajouter une vente</button>
+  </div>
+  <table>
+    <thead><tr><th>Date</th><th>Quantité</th><th>Prix unitaire</th><th>Montant</th><th></th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="5" class="txt" style="color:var(--ink-soft)">Aucune vente enregistrée.</td></tr>`}</tbody>
+  </table>`;
+}
+
+function catLabel(c){
+  return {poussins:'Poussins', medicaments:'Médicaments / vaccins', main_oeuvre:'Main d\u2019œuvre', autre:'Autre'}[c] || c;
+}
+function fmtDate(d){
+  if(!d) return '—';
+  const [y,m,day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+function escapeHtml(s){
+  return String(s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+// ---------- MODALS ----------
+function renderModal(){
+  const m = STATE.modal;
+  let inner = '';
+  if(m.type === 'new-lot') inner = modalNewLot(m);
+  if(m.type === 'new-entry') inner = modalNewEntry(m);
+  if(m.type === 'new-cost') inner = modalNewCost(m);
+  if(m.type === 'new-sale') inner = modalNewSale(m);
+  if(m.type === 'confirm') inner = modalConfirm(m);
+  return `<div class="overlay" data-action="close-modal">
+    <div class="modal" data-stop="1">${inner}</div>
+  </div>`;
+}
+
+function modalConfirm(m){
+  return `
+  <h3>Confirmer la suppression</h3>
+  <div class="modal-sub">${escapeHtml(m.data.message)}</div>
+  <div class="modal-actions">
+    <button class="btn ghost small" data-action="close-modal">Annuler</button>
+    <button class="btn rust small" data-action="confirm-yes">Supprimer</button>
+  </div>`;
+}
+
+function askConfirm(message, onConfirm){
+  STATE.modal = {type:'confirm', data:{message, onConfirm}};
+  render();
+}
+
+function modalNewLot(m){
+  const t = m.data.type || 'chair';
+  return `
+  <h3>Nouveau lot</h3>
+  <div class="modal-sub">Démarrer le suivi d'un nouveau groupe de volailles</div>
+  <div class="field">
+    <label>Type de lot</label>
+    <div class="radio-group">
+      <div class="radio-opt ${t==='chair'?'sel':''}" data-action="set-lot-type" data-val="chair">Poulets de chair</div>
+      <div class="radio-opt ${t==='ponte'?'sel':''}" data-action="set-lot-type" data-val="ponte">Pondeuses</div>
+    </div>
+  </div>
+  <div class="field"><label>Nom du lot</label><input id="f-name" type="text" placeholder="Ex. Lot Janvier — Bâtiment 1" value="${escapeHtml(m.data.name||'')}"></div>
+  <div class="field-row">
+    <div class="field"><label>Effectif initial</label><input id="f-effectif" type="number" min="1" placeholder="Ex. 200" value="${m.data.effectif||''}"></div>
+    <div class="field"><label>Date de démarrage</label><input id="f-date" type="date" value="${m.data.date||todayStr()}"></div>
+  </div>
+  <div class="field"><label>Race / souche (optionnel)</label><input id="f-race" type="text" placeholder="Ex. Cobb 500, Isa Brown…" value="${escapeHtml(m.data.race||'')}"></div>
+  <div class="modal-actions">
+    <button class="btn ghost small" data-action="close-modal">Annuler</button>
+    <button class="btn small" data-action="save-new-lot">Créer le lot</button>
+  </div>`;
+}
+
+function modalNewEntry(m){
+  const lot = STATE.lots.find(l=>l.id===m.data.lotId);
+  const isEdit = !!m.data.editId;
+  return `
+  <h3>${isEdit?'Modifier le relevé':'Nouveau relevé'}</h3>
+  <div class="modal-sub">${escapeHtml(lot.name)}</div>
+  <div class="field"><label>Date</label><input id="f-date" type="date" value="${m.data.date||todayStr()}"></div>
+  <div class="field-row">
+    <div class="field"><label>Mortalité (sujets)</label><input id="f-mortalite" type="number" min="0" value="${m.data.mortalite||0}"></div>
+    <div class="field"><label>Aliment consommé (kg)</label><input id="f-alimentkg" type="number" min="0" step="0.1" value="${m.data.alimentKg||''}"></div>
+  </div>
+  <div class="field"><label>Coût de l'aliment (FCFA)</label><input id="f-alimentcout" type="number" min="0" value="${m.data.alimentCout||''}"></div>
+  ${lot.type==='chair'
+    ? `<div class="field"><label>Poids moyen par sujet (kg)</label><input id="f-poids" type="number" min="0" step="0.01" value="${m.data.poidsMoyen||''}"></div>`
+    : `<div class="field"><label>Œufs pondus (nombre)</label><input id="f-oeufs" type="number" min="0" value="${m.data.oeufs||''}"></div>`}
+  <div class="modal-actions">
+    <button class="btn ghost small" data-action="close-modal">Annuler</button>
+    <button class="btn small" data-action="save-new-entry">${isEdit?'Enregistrer les modifications':'Enregistrer'}</button>
+  </div>`;
+}
+
+function modalNewCost(m){
+  const lot = STATE.lots.find(l=>l.id===m.data.lotId);
+  const cat = m.data.categorie || 'poussins';
+  const isEdit = !!m.data.editId;
+  return `
+  <h3>${isEdit?'Modifier le coût':'Nouveau coût'}</h3>
+  <div class="modal-sub">${escapeHtml(lot.name)}</div>
+  <div class="field"><label>Date</label><input id="f-date" type="date" value="${m.data.date||todayStr()}"></div>
+  <div class="field">
+    <label>Catégorie</label>
+    <select id="f-categorie">
+      <option value="poussins" ${cat==='poussins'?'selected':''}>Poussins</option>
+      <option value="medicaments" ${cat==='medicaments'?'selected':''}>Médicaments / vaccins</option>
+      <option value="main_oeuvre" ${cat==='main_oeuvre'?'selected':''}>Main d'œuvre</option>
+      <option value="autre" ${cat==='autre'?'selected':''}>Autre</option>
+    </select>
+  </div>
+  <div class="field"><label>Détail (optionnel)</label><input id="f-libelle" type="text" value="${escapeHtml(m.data.libelle||'')}"></div>
+  <div class="field"><label>Montant (FCFA)</label><input id="f-montant" type="number" min="0" value="${m.data.montant||''}"></div>
+  <div class="modal-actions">
+    <button class="btn ghost small" data-action="close-modal">Annuler</button>
+    <button class="btn small" data-action="save-new-cost">${isEdit?'Enregistrer les modifications':'Enregistrer'}</button>
+  </div>`;
+}
+
+function modalNewSale(m){
+  const lot = STATE.lots.find(l=>l.id===m.data.lotId);
+  const isEdit = !!m.data.editId;
+  return `
+  <h3>${isEdit?'Modifier la vente':'Nouvelle vente'}</h3>
+  <div class="modal-sub">${escapeHtml(lot.name)}</div>
+  <div class="field"><label>Date</label><input id="f-date" type="date" value="${m.data.date||todayStr()}"></div>
+  <div class="field-row">
+    <div class="field"><label>Quantité</label><input id="f-quantite" type="number" min="0" step="0.1" value="${m.data.quantite||''}"></div>
+    <div class="field"><label>Unité</label><input id="f-unite" type="text" placeholder="${lot.type==='chair'?'kg / sujets':'plateaux / oeufs'}" value="${escapeHtml(m.data.unite||(lot.type==='chair'?'sujets':'oeufs'))}"></div>
+  </div>
+  <div class="field"><label>Prix unitaire (FCFA)</label><input id="f-prixunit" type="number" min="0" value="${m.data.prixUnitaire||''}"></div>
+  <div class="modal-actions">
+    <button class="btn ghost small" data-action="close-modal">Annuler</button>
+    <button class="btn small" data-action="save-new-sale">${isEdit?'Enregistrer les modifications':'Enregistrer'}</button>
+  </div>`;
+}
+
+// ---------- HANDLERS ----------
+function attachHandlers(){
+  document.querySelectorAll('[data-action]').forEach(el=>{
+    el.addEventListener('click', onAction);
+  });
+  const modalEl = document.querySelector('.modal');
+  if(modalEl) modalEl.addEventListener('click', e=>e.stopPropagation());
+}
+
+function onAction(e){
+  const action = this.getAttribute('data-action');
+  switch(action){
+    case 'open-new-lot':
+      STATE.modal = {type:'new-lot', data:{type:'chair'}}; render(); break;
+    case 'set-lot-type':
+      STATE.modal.data.type = this.getAttribute('data-val'); render(); break;
+    case 'save-new-lot': saveNewLot(); break;
+
+    case 'open-lot':
+      STATE.activeLotId = this.getAttribute('data-id'); STATE.view='lot'; STATE.activeTab='resume'; render(); break;
+    case 'back':
+      STATE.view='dashboard'; STATE.activeLotId=null; render(); break;
+    case 'delete-lot': {
+      const lotId = this.getAttribute('data-id');
+      askConfirm('Supprimer définitivement ce lot et toutes ses données ?', async ()=>{
+        STATE.view='dashboard';
+        const { error } = await sb.from('lots').delete().eq('id', lotId);
+        if(error){ console.error(error); setSyncIndicator('⚠ Échec de la suppression'); }
+        fetchAllData();
+      });
+      break;
+    }
+    case 'tab':
+      STATE.activeTab = this.getAttribute('data-tab'); render(); break;
+
+    case 'open-new-entry':
+      STATE.modal = {type:'new-entry', data:{lotId:this.getAttribute('data-id')}}; render(); break;
+    case 'edit-entry': {
+      const lot = STATE.lots.find(l=>l.id===this.getAttribute('data-id'));
+      const entry = lot.entries.find(e=>e.id===this.getAttribute('data-entry'));
+      STATE.modal = {type:'new-entry', data:{lotId:lot.id, editId:entry.id, ...entry}}; render(); break;
+    }
+    case 'delete-entry': {
+      const entryId = this.getAttribute('data-entry');
+      askConfirm('Supprimer ce relevé ?', async ()=>{
+        const { error } = await sb.from('entries').delete().eq('id', entryId);
+        if(error){ console.error(error); setSyncIndicator('⚠ Échec de la suppression'); }
+        fetchAllData();
+      });
+      break;
+    }
+    case 'save-new-entry': saveNewEntry(); break;
+
+    case 'open-new-cost':
+      STATE.modal = {type:'new-cost', data:{lotId:this.getAttribute('data-id')}}; render(); break;
+    case 'edit-cost': {
+      const lot = STATE.lots.find(l=>l.id===this.getAttribute('data-id'));
+      const cost = lot.costs.find(c=>c.id===this.getAttribute('data-cost'));
+      STATE.modal = {type:'new-cost', data:{lotId:lot.id, editId:cost.id, ...cost}}; render(); break;
+    }
+    case 'delete-cost': {
+      const costId = this.getAttribute('data-cost');
+      askConfirm('Supprimer ce coût ?', async ()=>{
+        const { error } = await sb.from('costs').delete().eq('id', costId);
+        if(error){ console.error(error); setSyncIndicator('⚠ Échec de la suppression'); }
+        fetchAllData();
+      });
+      break;
+    }
+    case 'save-new-cost': saveNewCost(); break;
+
+    case 'open-new-sale':
+      STATE.modal = {type:'new-sale', data:{lotId:this.getAttribute('data-id')}}; render(); break;
+    case 'edit-sale': {
+      const lot = STATE.lots.find(l=>l.id===this.getAttribute('data-id'));
+      const sale = lot.ventes.find(v=>v.id===this.getAttribute('data-sale'));
+      STATE.modal = {type:'new-sale', data:{lotId:lot.id, editId:sale.id, ...sale}}; render(); break;
+    }
+    case 'delete-sale': {
+      const saleId = this.getAttribute('data-sale');
+      askConfirm('Supprimer cette vente ?', async ()=>{
+        const { error } = await sb.from('ventes').delete().eq('id', saleId);
+        if(error){ console.error(error); setSyncIndicator('⚠ Échec de la suppression'); }
+        fetchAllData();
+      });
+      break;
+    }
+    case 'save-new-sale': saveNewSale(); break;
+
+    case 'refresh-data': fetchAllData(); break;
+
+    case 'confirm-yes': {
+      if(STATE.modal && STATE.modal.data && typeof STATE.modal.data.onConfirm === 'function'){
+        STATE.modal.data.onConfirm();
+      }
+      STATE.modal = null;
+      render();
+      break;
+    }
+
+    case 'close-modal':
+      STATE.modal = null; render(); break;
+  }
+}
+
+function val(id){ const el = document.getElementById(id); return el ? el.value : ''; }
+function showModalError(msg){
+  const modalEl = document.querySelector('.modal');
+  if(!modalEl) return;
+  let errEl = modalEl.querySelector('.form-error');
+  if(!errEl){
+    errEl = document.createElement('div');
+    errEl.className = 'form-error';
+    const actions = modalEl.querySelector('.modal-actions');
+    modalEl.insertBefore(errEl, actions);
+  }
+  errEl.textContent = msg;
+}
+
+async function saveNewLot(){
+  const name = val('f-name').trim();
+  const effectif = Number(val('f-effectif'));
+  const date = val('f-date');
+  if(!name || !effectif || effectif<=0){ showModalError('Merci de renseigner le nom du lot et un effectif initial valide.'); return; }
+  const { error } = await sb.from('lots').insert({
+    name, type: STATE.modal.data.type,
+    effectif_initial: effectif,
+    date_debut: date || todayStr(),
+    race: val('f-race').trim() || null
+  });
+  if(error){ showModalError('Erreur de connexion : ' + error.message); return; }
+  STATE.modal = null;
+  fetchAllData();
+}
+
+async function saveNewEntry(){
+  const lotId = STATE.modal.data.lotId;
+  const editId = STATE.modal.data.editId;
+  const lot = STATE.lots.find(l=>l.id===lotId);
+  const payload = {
+    lot_id: lotId, date: val('f-date') || todayStr(),
+    mortalite: Number(val('f-mortalite'))||0,
+    aliment_kg: Number(val('f-alimentkg'))||0,
+    aliment_cout: Number(val('f-alimentcout'))||0,
+    poids_moyen: lot.type==='chair' ? (Number(val('f-poids'))||0) : null,
+    oeufs: lot.type==='ponte' ? (Number(val('f-oeufs'))||0) : null
+  };
+  const { error } = editId
+    ? await sb.from('entries').update(payload).eq('id', editId)
+    : await sb.from('entries').insert(payload);
+  if(error){ showModalError('Erreur de connexion : ' + error.message); return; }
+  STATE.modal = null;
+  fetchAllData();
+}
+
+async function saveNewCost(){
+  const lotId = STATE.modal.data.lotId;
+  const editId = STATE.modal.data.editId;
+  const montant = Number(val('f-montant'));
+  if(!montant || montant<=0){ showModalError('Merci de renseigner un montant valide.'); return; }
+  const payload = {
+    lot_id: lotId, date: val('f-date')||todayStr(),
+    categorie: val('f-categorie'), libelle: val('f-libelle').trim() || null, montant
+  };
+  const { error } = editId
+    ? await sb.from('costs').update(payload).eq('id', editId)
+    : await sb.from('costs').insert(payload);
+  if(error){ showModalError('Erreur de connexion : ' + error.message); return; }
+  STATE.modal = null;
+  fetchAllData();
+}
+
+async function saveNewSale(){
+  const lotId = STATE.modal.data.lotId;
+  const editId = STATE.modal.data.editId;
+  const quantite = Number(val('f-quantite'));
+  const prixUnitaire = Number(val('f-prixunit'));
+  if(!quantite || !prixUnitaire){ showModalError('Merci de renseigner la quantité et le prix unitaire.'); return; }
+  const payload = {
+    lot_id: lotId, date: val('f-date')||todayStr(),
+    quantite, unite: val('f-unite').trim()||'unités', prix_unitaire: prixUnitaire,
+    montant: quantite*prixUnitaire
+  };
+  const { error } = editId
+    ? await sb.from('ventes').update(payload).eq('id', editId)
+    : await sb.from('ventes').insert(payload);
+  if(error){ showModalError('Erreur de connexion : ' + error.message); return; }
+  STATE.modal = null;
+  fetchAllData();
+}
+
+// ---------- INIT ----------
+fetchAllData();
+</script>
+</body>
+</html>
