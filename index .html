@@ -6,6 +6,7 @@
 <title>Carnet du Poulailler — Suivi de Rentabilité</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     --bg: #F3EEE1;
@@ -180,8 +181,11 @@
 
 <script>
 // ---------- STATE ----------
-let STATE = { lots: [], view: 'dashboard', activeLotId: null, activeTab: 'resume', modal: null, loaded:false };
-const STORE_KEY = 'poulailler-lots-v1';
+let STATE = { lots: [], view: 'dashboard', activeLotId: null, activeTab: 'resume', modal: null, loaded:false, syncing:false };
+
+const SUPABASE_URL = 'https://rtcnggurwwvanplkbygm.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_4iiv-_l0ecuzxCJozKMNDw_W6wuRpve';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function fmtFCFA(n){
@@ -191,22 +195,60 @@ function fmtFCFA(n){
 function fmtNum(n, d=1){ return (n||0).toLocaleString('fr-FR', {maximumFractionDigits:d}); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 
-// ---------- PERSISTENCE ----------
-async function loadData(){
+// ---------- MAPPING (colonnes DB <-> objets JS) ----------
+function dbLotToApp(row){
+  return { id: row.id, name: row.name, type: row.type, effectifInitial: row.effectif_initial,
+           dateDebut: row.date_debut, race: row.race, entries: [], costs: [], ventes: [] };
+}
+function dbEntryToApp(row){
+  return { id: row.id, date: row.date, mortalite: row.mortalite, alimentKg: Number(row.aliment_kg),
+           alimentCout: Number(row.aliment_cout), poidsMoyen: row.poids_moyen!==null?Number(row.poids_moyen):undefined,
+           oeufs: row.oeufs!==null?Number(row.oeufs):undefined };
+}
+function dbCostToApp(row){
+  return { id: row.id, date: row.date, categorie: row.categorie, libelle: row.libelle, montant: Number(row.montant) };
+}
+function dbSaleToApp(row){
+  return { id: row.id, date: row.date, quantite: Number(row.quantite), unite: row.unite,
+           prixUnitaire: Number(row.prix_unitaire), montant: Number(row.montant) };
+}
+
+// ---------- PERSISTENCE (Supabase, partagé entre tous les membres de l'équipe) ----------
+function setSyncIndicator(text){
+  const el = document.getElementById('sync-indicator');
+  if(el) el.textContent = text;
+}
+
+async function fetchAllData(silent){
+  if(!silent){ STATE.syncing = true; }
   try{
-    const res = await window.storage.get(STORE_KEY, false);
-    STATE.lots = res && res.value ? JSON.parse(res.value) : [];
+    const [lotsRes, entriesRes, costsRes, ventesRes] = await Promise.all([
+      sb.from('lots').select('*').order('created_at', {ascending:false}),
+      sb.from('entries').select('*'),
+      sb.from('costs').select('*'),
+      sb.from('ventes').select('*')
+    ]);
+    if(lotsRes.error) throw lotsRes.error;
+    const lots = lotsRes.data.map(dbLotToApp);
+    const byId = {};
+    lots.forEach(l=>byId[l.id]=l);
+    (entriesRes.data||[]).forEach(r=>{ const l=byId[r.lot_id]; if(l) l.entries.push(dbEntryToApp(r)); });
+    (costsRes.data||[]).forEach(r=>{ const l=byId[r.lot_id]; if(l) l.costs.push(dbCostToApp(r)); });
+    (ventesRes.data||[]).forEach(r=>{ const l=byId[r.lot_id]; if(l) l.ventes.push(dbSaleToApp(r)); });
+    STATE.lots = lots;
+    STATE.loaded = true;
+    setSyncIndicator('');
   }catch(e){
-    STATE.lots = [];
+    console.error('Erreur de synchronisation', e);
+    setSyncIndicator('⚠ Connexion impossible');
   }
-  STATE.loaded = true;
+  STATE.syncing = false;
   render();
 }
-async function saveData(){
-  try{
-    await window.storage.set(STORE_KEY, JSON.stringify(STATE.lots), false);
-  }catch(e){ console.error('Erreur de sauvegarde', e); }
-}
+
+// Actualisation automatique en arrière-plan (sans perturber une fenêtre ouverte)
+setInterval(()=>{ if(!STATE.modal) fetchAllData(true); }, 12000);
+
 
 // ---------- COMPUTATION ----------
 function computeLot(lot){
@@ -270,7 +312,7 @@ function render(){
   } else if(STATE.view === 'lot'){
     html += renderLotDetail(STATE.activeLotId);
   }
-  html += `<div class="footer-note">Carnet du Poulailler · données conservées localement sur cet appareil</div>`;
+  html += `<div class="footer-note">Carnet du Poulailler · données partagées avec toute l'équipe · synchronisées en direct</div>`;
   if(STATE.modal){ html += renderModal(); }
   app.innerHTML = html;
   attachHandlers();
@@ -296,7 +338,11 @@ function renderHeader(){
         <div class="sub">Suivi de rentabilité par lot — chair &amp; ponte</div>
       </div>
     </div>
-    ${STATE.view==='dashboard' ? `<button class="btn" data-action="open-new-lot">+ Nouveau lot</button>` : ''}
+    <div style="display:flex; gap:8px; align-items:center;">
+      <span id="sync-indicator" style="font-size:11.5px; color:var(--ink-soft);"></span>
+      <button class="btn ghost small" data-action="refresh-data">↻ Actualiser</button>
+      ${STATE.view==='dashboard' ? `<button class="btn" data-action="open-new-lot">+ Nouveau lot</button>` : ''}
+    </div>
   </header>`;
 }
 
@@ -608,10 +654,11 @@ function onAction(e){
       STATE.view='dashboard'; STATE.activeLotId=null; render(); break;
     case 'delete-lot': {
       const lotId = this.getAttribute('data-id');
-      askConfirm('Supprimer définitivement ce lot et toutes ses données ?', ()=>{
-        STATE.lots = STATE.lots.filter(l=>l.id !== lotId);
+      askConfirm('Supprimer définitivement ce lot et toutes ses données ?', async ()=>{
         STATE.view='dashboard';
-        saveData();
+        const { error } = await sb.from('lots').delete().eq('id', lotId);
+        if(error){ console.error(error); setSyncIndicator('⚠ Échec de la suppression'); }
+        fetchAllData();
       });
       break;
     }
@@ -626,12 +673,11 @@ function onAction(e){
       STATE.modal = {type:'new-entry', data:{lotId:lot.id, editId:entry.id, ...entry}}; render(); break;
     }
     case 'delete-entry': {
-      const lotId = this.getAttribute('data-id');
       const entryId = this.getAttribute('data-entry');
-      askConfirm('Supprimer ce relevé ?', ()=>{
-        const lot = STATE.lots.find(l=>l.id===lotId);
-        lot.entries = lot.entries.filter(e=>e.id !== entryId);
-        saveData();
+      askConfirm('Supprimer ce relevé ?', async ()=>{
+        const { error } = await sb.from('entries').delete().eq('id', entryId);
+        if(error){ console.error(error); setSyncIndicator('⚠ Échec de la suppression'); }
+        fetchAllData();
       });
       break;
     }
@@ -645,12 +691,11 @@ function onAction(e){
       STATE.modal = {type:'new-cost', data:{lotId:lot.id, editId:cost.id, ...cost}}; render(); break;
     }
     case 'delete-cost': {
-      const lotId = this.getAttribute('data-id');
       const costId = this.getAttribute('data-cost');
-      askConfirm('Supprimer ce coût ?', ()=>{
-        const lot = STATE.lots.find(l=>l.id===lotId);
-        lot.costs = lot.costs.filter(c=>c.id !== costId);
-        saveData();
+      askConfirm('Supprimer ce coût ?', async ()=>{
+        const { error } = await sb.from('costs').delete().eq('id', costId);
+        if(error){ console.error(error); setSyncIndicator('⚠ Échec de la suppression'); }
+        fetchAllData();
       });
       break;
     }
@@ -664,16 +709,17 @@ function onAction(e){
       STATE.modal = {type:'new-sale', data:{lotId:lot.id, editId:sale.id, ...sale}}; render(); break;
     }
     case 'delete-sale': {
-      const lotId = this.getAttribute('data-id');
       const saleId = this.getAttribute('data-sale');
-      askConfirm('Supprimer cette vente ?', ()=>{
-        const lot = STATE.lots.find(l=>l.id===lotId);
-        lot.ventes = lot.ventes.filter(v=>v.id !== saleId);
-        saveData();
+      askConfirm('Supprimer cette vente ?', async ()=>{
+        const { error } = await sb.from('ventes').delete().eq('id', saleId);
+        if(error){ console.error(error); setSyncIndicator('⚠ Échec de la suppression'); }
+        fetchAllData();
       });
       break;
     }
     case 'save-new-sale': saveNewSale(); break;
+
+    case 'refresh-data': fetchAllData(); break;
 
     case 'confirm-yes': {
       if(STATE.modal && STATE.modal.data && typeof STATE.modal.data.onConfirm === 'function'){
@@ -703,90 +749,80 @@ function showModalError(msg){
   errEl.textContent = msg;
 }
 
-function saveNewLot(){
+async function saveNewLot(){
   const name = val('f-name').trim();
   const effectif = Number(val('f-effectif'));
   const date = val('f-date');
   if(!name || !effectif || effectif<=0){ showModalError('Merci de renseigner le nom du lot et un effectif initial valide.'); return; }
-  const lot = {
-    id: uid(),
+  const { error } = await sb.from('lots').insert({
     name, type: STATE.modal.data.type,
-    effectifInitial: effectif,
-    dateDebut: date || todayStr(),
-    race: val('f-race').trim(),
-    entries: [], costs: [], ventes: []
-  };
-  STATE.lots.unshift(lot);
+    effectif_initial: effectif,
+    date_debut: date || todayStr(),
+    race: val('f-race').trim() || null
+  });
+  if(error){ showModalError('Erreur de connexion : ' + error.message); return; }
   STATE.modal = null;
-  saveData(); render();
+  fetchAllData();
 }
 
-function saveNewEntry(){
+async function saveNewEntry(){
   const lotId = STATE.modal.data.lotId;
   const editId = STATE.modal.data.editId;
   const lot = STATE.lots.find(l=>l.id===lotId);
-  const entry = {
-    id: editId || uid(), date: val('f-date') || todayStr(),
+  const payload = {
+    lot_id: lotId, date: val('f-date') || todayStr(),
     mortalite: Number(val('f-mortalite'))||0,
-    alimentKg: Number(val('f-alimentkg'))||0,
-    alimentCout: Number(val('f-alimentcout'))||0,
+    aliment_kg: Number(val('f-alimentkg'))||0,
+    aliment_cout: Number(val('f-alimentcout'))||0,
+    poids_moyen: lot.type==='chair' ? (Number(val('f-poids'))||0) : null,
+    oeufs: lot.type==='ponte' ? (Number(val('f-oeufs'))||0) : null
   };
-  if(lot.type==='chair') entry.poidsMoyen = Number(val('f-poids'))||0;
-  else entry.oeufs = Number(val('f-oeufs'))||0;
-  if(editId){
-    const idx = lot.entries.findIndex(e=>e.id===editId);
-    lot.entries[idx] = entry;
-  } else {
-    lot.entries.push(entry);
-  }
+  const { error } = editId
+    ? await sb.from('entries').update(payload).eq('id', editId)
+    : await sb.from('entries').insert(payload);
+  if(error){ showModalError('Erreur de connexion : ' + error.message); return; }
   STATE.modal = null;
-  saveData(); render();
+  fetchAllData();
 }
 
-function saveNewCost(){
+async function saveNewCost(){
   const lotId = STATE.modal.data.lotId;
   const editId = STATE.modal.data.editId;
-  const lot = STATE.lots.find(l=>l.id===lotId);
   const montant = Number(val('f-montant'));
   if(!montant || montant<=0){ showModalError('Merci de renseigner un montant valide.'); return; }
-  const cost = {
-    id: editId || uid(), date: val('f-date')||todayStr(),
-    categorie: val('f-categorie'), libelle: val('f-libelle').trim(), montant
+  const payload = {
+    lot_id: lotId, date: val('f-date')||todayStr(),
+    categorie: val('f-categorie'), libelle: val('f-libelle').trim() || null, montant
   };
-  if(editId){
-    const idx = lot.costs.findIndex(c=>c.id===editId);
-    lot.costs[idx] = cost;
-  } else {
-    lot.costs.push(cost);
-  }
+  const { error } = editId
+    ? await sb.from('costs').update(payload).eq('id', editId)
+    : await sb.from('costs').insert(payload);
+  if(error){ showModalError('Erreur de connexion : ' + error.message); return; }
   STATE.modal = null;
-  saveData(); render();
+  fetchAllData();
 }
 
-function saveNewSale(){
+async function saveNewSale(){
   const lotId = STATE.modal.data.lotId;
   const editId = STATE.modal.data.editId;
-  const lot = STATE.lots.find(l=>l.id===lotId);
   const quantite = Number(val('f-quantite'));
   const prixUnitaire = Number(val('f-prixunit'));
   if(!quantite || !prixUnitaire){ showModalError('Merci de renseigner la quantité et le prix unitaire.'); return; }
-  const sale = {
-    id: editId || uid(), date: val('f-date')||todayStr(),
-    quantite, unite: val('f-unite').trim()||'unités', prixUnitaire,
+  const payload = {
+    lot_id: lotId, date: val('f-date')||todayStr(),
+    quantite, unite: val('f-unite').trim()||'unités', prix_unitaire: prixUnitaire,
     montant: quantite*prixUnitaire
   };
-  if(editId){
-    const idx = lot.ventes.findIndex(v=>v.id===editId);
-    lot.ventes[idx] = sale;
-  } else {
-    lot.ventes.push(sale);
-  }
+  const { error } = editId
+    ? await sb.from('ventes').update(payload).eq('id', editId)
+    : await sb.from('ventes').insert(payload);
+  if(error){ showModalError('Erreur de connexion : ' + error.message); return; }
   STATE.modal = null;
-  saveData(); render();
+  fetchAllData();
 }
 
 // ---------- INIT ----------
-loadData();
+fetchAllData();
 </script>
 </body>
 </html>
