@@ -303,7 +303,7 @@ async function fetchAdminData(){
 }
 
 // Actualisation automatique en arrière-plan (sans perturber une fenêtre ouverte)
-setInterval(()=>{ if(!STATE.modal) fetchAllData(true); }, 12000);
+setInterval(()=>{ if(!STATE.modal && STATE.session) fetchAllData(true); }, 12000);
 
 
 // ---------- COMPUTATION ----------
@@ -385,7 +385,7 @@ function renderLogin(){
       ${henMark()}
       <h1>Carnet du Poulailler</h1>
       <div class="sub">Connectez-vous avec l'accès partagé de l'équipe</div>
-      <div class="field"><label>Adresse e-mail</label><input id="f-login-email" type="email" placeholder="equipe@poulailler-monastere.app" value="equipe@poulailler-monastere.app"></div>
+      <div class="field"><label>Adresse e-mail</label><input id="f-login-email" type="email" placeholder="votre.email@exemple.com"></div>
       <div class="field"><label>Mot de passe</label><input id="f-login-pass" type="password" placeholder="••••••••"></div>
       <button class="btn" data-action="do-login" style="width:100%;">Se connecter</button>
     </div>
