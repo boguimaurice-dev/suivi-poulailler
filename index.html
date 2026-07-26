@@ -855,8 +855,13 @@ function onAction(e){
   switch(action){
     case 'open-new-lot':
       STATE.modal = {type:'new-lot', data:{type:'chair'}}; render(); break;
-    case 'set-lot-type':
-      STATE.modal.data.type = this.getAttribute('data-val'); render(); break;
+    case 'set-lot-type': {
+      STATE.modal.data.type = this.getAttribute('data-val');
+      const group = this.parentElement;
+      group.querySelectorAll('.radio-opt').forEach(el=>el.classList.remove('sel'));
+      this.classList.add('sel');
+      break;
+    }
     case 'save-new-lot': saveNewLot(); break;
 
     case 'open-lot':
@@ -941,8 +946,14 @@ function onAction(e){
 
     case 'open-new-user':
       STATE.modal = {type:'new-user', data:{role:'utilisateur'}}; render(); break;
-    case 'set-user-role':
-      STATE.modal.data.role = this.getAttribute('data-val'); render(); break;
+    case 'set-user-role': {
+      STATE.modal.data.role = this.getAttribute('data-val');
+      // Préserve ce qui a déjà été tapé : on ne redessine que les boutons de rôle, pas toute la fenêtre
+      const group = this.parentElement;
+      group.querySelectorAll('.radio-opt').forEach(el=>el.classList.remove('sel'));
+      this.classList.add('sel');
+      break;
+    }
     case 'save-new-user': saveNewUser(); break;
     case 'change-role': {
       const userId = this.getAttribute('data-user');
