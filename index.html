@@ -1096,7 +1096,7 @@ async function doLogin(){
       errEl.className = 'form-error';
       app.querySelector('.login-card').insertBefore(errEl, app.querySelector('[data-action="do-login"]'));
     }
-    errEl.textContent = 'Adresse e-mail ou mot de passe incorrect.';
+    errEl.textContent = 'Erreur : ' + error.message + ' (code: ' + (error.status||'?') + ')';
     return;
   }
   STATE.session = data.session;
