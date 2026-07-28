@@ -625,6 +625,7 @@ function renderAdminUsers(){
       <td class="txt">${escapeHtml(u.email)}</td>
       <td><span class="role-pill ${u.role}">${roleLabel(u.role)}</span></td>
       <td class="actions-cell">
+        <button class="row-action" data-action="edit-user" data-user="${u.id}">Modifier</button>
         ${u.id !== STATE.session.user.id ? `
         <select class="row-action" data-action="change-role" data-user="${u.id}" style="border:1px solid var(--line);border-radius:3px;font-family:inherit;">
           <option value="admin" ${u.role==='admin'?'selected':''}>Administrateur</option>
@@ -707,6 +708,7 @@ function renderModal(){
   if(m.type === 'new-sale') inner = modalNewSale(m);
   if(m.type === 'confirm') inner = modalConfirm(m);
   if(m.type === 'new-user') inner = modalNewUser(m);
+  if(m.type === 'edit-user') inner = modalEditUser(m);
   return `<div class="overlay" data-action="close-modal">
     <div class="modal" data-stop="1">${inner}</div>
   </div>`;
@@ -725,6 +727,19 @@ function modalConfirm(m){
 function askConfirm(message, onConfirm){
   STATE.modal = {type:'confirm', data:{message, onConfirm}};
   render();
+}
+
+function modalEditUser(m){
+  return `
+  <h3>Modifier le compte</h3>
+  <div class="modal-sub">${escapeHtml(m.data.currentEmail)}</div>
+  <div class="field"><label>Nom (affiché dans la liste)</label><input id="f-edit-name" type="text" value="${escapeHtml(m.data.name||'')}"></div>
+  <div class="field"><label>E-mail</label><input id="f-edit-email" type="email" value="${escapeHtml(m.data.email||'')}"></div>
+  <div class="field"><label>Nouveau mot de passe (laisser vide pour ne pas changer)</label><input id="f-edit-pass" type="text" placeholder="Laisser vide pour conserver l'actuel"></div>
+  <div class="modal-actions">
+    <button class="btn ghost small" data-action="close-modal">Annuler</button>
+    <button class="btn small" data-action="save-edit-user">Enregistrer</button>
+  </div>`;
 }
 
 function modalNewUser(m){
@@ -946,6 +961,12 @@ function onAction(e){
 
     case 'open-new-user':
       STATE.modal = {type:'new-user', data:{role:'utilisateur'}}; render(); break;
+    case 'edit-user': {
+      const u = STATE.users.find(x=>x.id===this.getAttribute('data-user'));
+      STATE.modal = {type:'edit-user', data:{userId:u.id, name:u.display_name, email:u.email, currentEmail:u.email}};
+      render(); break;
+    }
+    case 'save-edit-user': saveEditUser(); break;
     case 'set-user-role': {
       STATE.modal.data.role = this.getAttribute('data-val');
       // Préserve ce qui a déjà été tapé : on ne redessine que les boutons de rôle, pas toute la fenêtre
@@ -1093,6 +1114,22 @@ async function changeUserRole(userId, newRole){
   const { error } = await sb.rpc('admin_update_role', { p_user_id: userId, p_role: newRole });
   if(error){ console.error(error); setSyncIndicator('⚠ ' + error.message); }
   fetchAdminData();
+}
+
+async function saveEditUser(){
+  const userId = STATE.modal.data.userId;
+  const name = val('f-edit-name').trim();
+  const email = val('f-edit-email').trim();
+  const pass = val('f-edit-pass');
+  if(pass && pass.length < 6){ showModalError('Le nouveau mot de passe doit contenir au moins 6 caractères.'); return; }
+  const { error } = await sb.rpc('admin_update_user', {
+    p_user_id: userId, p_display_name: name, p_email: email, p_new_password: pass || null
+  });
+  if(error){ showModalError('Erreur : ' + error.message); return; }
+  STATE.modal = null;
+  fetchAdminData();
+  // Si l'admin modifie son propre profil, on rafraîchit aussi son affichage
+  if(userId === STATE.session.user.id){ STATE.profile = null; fetchAllData(true); }
 }
 
 async function doLogin(){
